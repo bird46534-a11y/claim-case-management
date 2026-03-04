@@ -25,4 +25,52 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * 案件表：儲存理賠案件基本資訊
+ * case_number: 12碼案號（例如 101815A00001）
+ * status: 當前狀態（進入檔案室、擲回經辦人員、轉台北審核、轉法務追償）
+ * created_by: 建檔者 user id
+ * created_at: 建檔時間
+ * updated_at: 最後更新時間
+ */
+export const cases = mysqlTable("cases", {
+  id: int("id").autoincrement().primaryKey(),
+  caseNumber: varchar("caseNumber", { length: 12 }).notNull().unique(),
+  status: mysqlEnum("status", [
+    "進入檔案室",
+    "擲回經辦人員",
+    "轉台北審核",
+    "轉法務追償",
+  ]).notNull(),
+  createdBy: int("createdBy").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Case = typeof cases.$inferSelect;
+export type InsertCase = typeof cases.$inferInsert;
+
+/**
+ * 狀態歷程表：記錄每次狀態變更的詳細資訊
+ * case_id: 案件 ID
+ * status: 變更後的狀態
+ * operator_id: 操作人 user id
+ * changed_at: 變更時間
+ * reason: 擲回原因備註（僅當狀態為「擲回經辦人員」時使用）
+ */
+export const statusHistory = mysqlTable("statusHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull().references(() => cases.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", [
+    "進入檔案室",
+    "擲回經辦人員",
+    "轉台北審核",
+    "轉法務追償",
+  ]).notNull(),
+  operatorId: int("operatorId").notNull().references(() => users.id),
+  changedAt: timestamp("changedAt").defaultNow().notNull(),
+  reason: text("reason"), // 擲回原因
+});
+
+export type StatusHistory = typeof statusHistory.$inferSelect;
+export type InsertStatusHistory = typeof statusHistory.$inferInsert;

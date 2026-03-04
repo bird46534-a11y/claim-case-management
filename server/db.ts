@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, cases, statusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,113 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+/**
+ * 新增案件
+ */
+export async function createCase(input: {
+  caseNumber: string;
+  createdBy: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(cases).values({
+    caseNumber: input.caseNumber,
+    createdBy: input.createdBy,
+    status: "進入檔案室", // 預設狀態
+  });
+
+  return result;
+}
+
+/**
+ * 取得所有案件（包含最新狀態）
+ */
+export async function getAllCases() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(cases);
+  return result;
+}
+
+/**
+ * 根據案號搜尋案件（支援模糊搜尋）
+ */
+export async function searchCases(keyword: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db
+    .select()
+    .from(cases)
+    .where(
+      sql`${cases.caseNumber} LIKE ${`%${keyword}%`}`
+    );
+
+  return result;
+}
+
+/**
+ * 更新案件狀態
+ */
+export async function updateCaseStatus(input: {
+  caseId: number;
+  status: "進入檔案室" | "擲回經辦人員" | "轉台北審核" | "轉法務追償";
+  operatorId: number;
+  reason?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 更新案件狀態
+  await db
+    .update(cases)
+    .set({ status: input.status })
+    .where(eq(cases.id, input.caseId));
+
+  // 記錄狀態歷程
+  await db.insert(statusHistory).values({
+    caseId: input.caseId,
+    status: input.status,
+    operatorId: input.operatorId,
+    reason: input.reason,
+  });
+}
+
+/**
+ * 取得案件的完整狀態歷程
+ */
+export async function getCaseHistory(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db
+    .select()
+    .from(statusHistory)
+    .where(eq(statusHistory.caseId, caseId))
+    .orderBy(statusHistory.changedAt);
+
+  return result;
+}
+
+/**
+ * 刪除案件
+ */
+export async function deleteCase(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(cases).where(eq(cases.id, caseId));
+}
+
+/**
+ * 根據案件 ID 取得案件詳情
+ */
+export async function getCaseById(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
