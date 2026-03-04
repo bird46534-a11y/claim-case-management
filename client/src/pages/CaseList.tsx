@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +13,7 @@ import ExportButton from "@/components/ExportButton";
 
 export default function CaseList() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { subscribe } = useWebSocket();
   const [searchKeyword, setSearchKeyword] = useState("");
   const [expandedCaseId, setExpandedCaseId] = useState<number | null>(null);
   const [newCaseNumber, setNewCaseNumber] = useState("");
@@ -53,6 +55,36 @@ export default function CaseList() {
       toast.error(error.message || "更新狀態失敗");
     },
   });
+
+  // 設置 WebSocket 事件監聽
+  useEffect(() => {
+    // 監聽新增案件事件
+    const unsubscribeCreated = subscribe("case:created", (data: any) => {
+      console.log("[WebSocket] Received case:created event", data);
+      toast.info(`新增案件：${data.caseNumber}`);
+      refetchCases();
+    });
+
+    // 監聽更新狀態事件
+    const unsubscribeUpdated = subscribe("case:updated", (data: any) => {
+      console.log("[WebSocket] Received case:updated event", data);
+      toast.info(`案件 ${data.caseId} 狀態已更新為：${data.status}`);
+      refetchCases();
+    });
+
+    // 監聽刪除案件事件
+    const unsubscribeDeleted = subscribe("case:deleted", (data: any) => {
+      console.log("[WebSocket] Received case:deleted event", data);
+      toast.info(`案件 ${data.caseId} 已刪除`);
+      refetchCases();
+    });
+
+    return () => {
+      unsubscribeCreated?.();
+      unsubscribeUpdated?.();
+      unsubscribeDeleted?.();
+    };
+  }, [subscribe, refetchCases]);
 
   // 驗證案號格式
   const validateCaseNumber = (caseNumber: string): boolean => {

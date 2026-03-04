@@ -45,10 +45,21 @@ export const appRouter = router({
         }
 
         try {
-          await db.createCase({
+          const result = await db.createCase({
             caseNumber: input.caseNumber,
             createdBy: ctx.user.id,
           });
+
+          // 發送 WebSocket 事件通知所有客戶端
+          const io = (ctx.req as any).app?.io;
+          if (io) {
+            io.emit("case:created", {
+              caseNumber: input.caseNumber,
+              createdBy: ctx.user.id,
+              createdAt: new Date(),
+            });
+          }
+
           return { success: true };
         } catch (error) {
           if ((error as any).code === "ER_DUP_ENTRY") {
@@ -78,6 +89,18 @@ export const appRouter = router({
           reason: input.reason,
         });
 
+        // 發送 WebSocket 事件通知所有客戶端
+        const io = (ctx.req as any).app?.io;
+        if (io) {
+          io.emit("case:updated", {
+            caseId: input.caseId,
+            status: input.status,
+            operatorId: ctx.user.id,
+            reason: input.reason,
+            updatedAt: new Date(),
+          });
+        }
+
         return { success: true };
       }),
 
@@ -96,6 +119,15 @@ export const appRouter = router({
         }
 
         await db.deleteCase(input.caseId);
+
+        // 發送 WebSocket 事件通知所有客戶端
+        const io = (ctx.req as any).app?.io;
+        if (io) {
+          io.emit("case:deleted", {
+            caseId: input.caseId,
+          });
+        }
+
         return { success: true };
       }),
   }),
