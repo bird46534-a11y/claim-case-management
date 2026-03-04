@@ -5,22 +5,52 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, ChevronDown } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import CaseHistory from "@/components/CaseHistory";
 import ExportButton from "@/components/ExportButton";
 import { getLoginUrl } from "@/const";
+
+const STATUS_OPTIONS = [
+  { value: "進入檔案室", label: "進入檔案室" },
+  { value: "擲回經辦人員", label: "擲回經辦人員" },
+  { value: "轉台北審核", label: "轉台北審核", color: "orange" },
+  { value: "轉法務追償", label: "轉法務追償" },
+];
+
+const getStatusColor = (status: string) => {
+  if (status === "轉台北審核") return "bg-orange-100 text-orange-900 border-orange-300";
+  return "bg-gray-100 text-gray-900 border-gray-300";
+};
+
+function LogoutButton() {
+  const logoutMutation = trpc.auth.logout.useMutation({
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+  });
+
+  return (
+    <Button
+      variant="outline"
+      onClick={() => logoutMutation.mutate()}
+      disabled={logoutMutation.isPending}
+    >
+      {logoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "登出"}
+    </Button>
+  );
+}
 
 export default function CaseList() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { subscribe } = useWebSocket();
   const [searchKeyword, setSearchKeyword] = useState("");
   const [expandedCaseId, setExpandedCaseId] = useState<number | null>(null);
-  const [newCaseNumber, setNewCaseNumber] = useState("");
+  const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
-  const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   // 查詢案件列表
   const { data: allCases = [], isLoading: casesLoading, refetch: refetchCases } = trpc.cases.list.useQuery();
@@ -31,24 +61,12 @@ export default function CaseList() {
     { enabled: searchKeyword.length > 0 }
   );
 
-  // 新增案件
-  const createCaseMutation = trpc.cases.create.useMutation({
-    onSuccess: () => {
-      toast.success("案件新增成功");
-      setNewCaseNumber("");
-      refetchCases();
-    },
-    onError: (error) => {
-      toast.error(error.message || "新增案件失敗");
-    },
-  });
-
   // 更新案件狀態
   const updateStatusMutation = trpc.cases.updateStatus.useMutation({
     onSuccess: () => {
       toast.success("案件狀態已更新");
+      setEditingCaseId(null);
       setSelectedStatus(null);
-      setSelectedCaseId(null);
       setRejectReason("");
       refetchCases();
     },
@@ -59,21 +77,12 @@ export default function CaseList() {
 
   // 設置 WebSocket 事件監聽
   useEffect(() => {
-    // 監聽新增案件事件
-    const unsubscribeCreated = subscribe("case:created", (data: any) => {
-      console.log("[WebSocket] Received case:created event", data);
-      toast.info(`新增案件：${data.caseNumber}`);
-      refetchCases();
-    });
-
-    // 監聽更新狀態事件
     const unsubscribeUpdated = subscribe("case:updated", (data: any) => {
       console.log("[WebSocket] Received case:updated event", data);
       toast.info(`案件 ${data.caseId} 狀態已更新為：${data.status}`);
       refetchCases();
     });
 
-    // 監聽刪除案件事件
     const unsubscribeDeleted = subscribe("case:deleted", (data: any) => {
       console.log("[WebSocket] Received case:deleted event", data);
       toast.info(`案件 ${data.caseId} 已刪除`);
@@ -81,46 +90,10 @@ export default function CaseList() {
     });
 
     return () => {
-      unsubscribeCreated?.();
-      unsubscribeUpdated?.();
-      unsubscribeDeleted?.();
+      if (unsubscribeUpdated) unsubscribeUpdated();
+      if (unsubscribeDeleted) unsubscribeDeleted();
     };
   }, [subscribe, refetchCases]);
-
-  // 驗證案號格式
-  const validateCaseNumber = (caseNumber: string): boolean => {
-    const regex = /^[0-9]{2}[0-9]{2}[0-9]{2}[AKM][0-9]{5}$/;
-    return regex.test(caseNumber);
-  };
-
-  // 處理新增案件
-  const handleCreateCase = () => {
-    if (!newCaseNumber) {
-      toast.error("請輸入案號");
-      return;
-    }
-    if (!validateCaseNumber(newCaseNumber)) {
-      toast.error("案號格式不正確（應為12碼：公司2+區域2+年度2+險種1+流水號5）");
-      return;
-    }
-    createCaseMutation.mutate({ caseNumber: newCaseNumber });
-  };
-
-  // 處理狀態更新
-  const handleUpdateStatus = () => {
-    if (!selectedCaseId || !selectedStatus) {
-      toast.error("請選擇案件與狀態");
-      return;
-    }
-    updateStatusMutation.mutate({
-      caseId: selectedCaseId,
-      status: selectedStatus as "進入檔案室" | "擲回經辦人員" | "轉台北審核" | "轉法務追償",
-      reason: selectedStatus === "擲回經辦人員" ? rejectReason : undefined,
-    });
-  };
-
-  // 顯示的案件列表
-  const displayCases = searchKeyword.length > 0 ? searchResults : allCases;
 
   if (authLoading) {
     return (
@@ -141,6 +114,24 @@ export default function CaseList() {
     );
   }
 
+  // 決定顯示的案件列表
+  const displayCases = searchKeyword.length > 0 ? searchResults : allCases;
+
+  // 分頁
+  const totalPages = Math.ceil(displayCases.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedCases = displayCases.slice(startIndex, startIndex + itemsPerPage);
+
+  const handleStatusChange = (caseId: number, newStatus: string) => {
+    if (!user) return;
+
+    updateStatusMutation.mutate({
+      caseId,
+      status: newStatus as any,
+      reason: newStatus === "擲回經辦人員" ? rejectReason : undefined,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* 標題區域 */}
@@ -152,180 +143,212 @@ export default function CaseList() {
       {/* 主要內容區域 */}
       <div className="container py-8">
         {/* 操作欄 */}
-        <div className="flex gap-4 mb-8 flex-wrap">
+        <div className="flex gap-4 mb-8 flex-wrap items-center">
           {/* 搜尋框 */}
           <div className="flex-1 min-w-64">
             <Input
               placeholder="搜尋案號..."
               value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              className="border-border"
+              onChange={(e) => {
+                setSearchKeyword(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full"
             />
           </div>
 
-          {/* 匯出 Excel 按鈕 */}
+          {/* Excel 匯出按鈕 */}
           <ExportButton />
 
-          {/* 新增案件按鈕（僅管理者） */}
-          {user?.role === "admin" && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
-                  新增案件
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>新增案件</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">案號（12碼）</label>
-                    <Input
-                      placeholder="例如：101815A00001"
-                      value={newCaseNumber}
-                      onChange={(e) => setNewCaseNumber(e.target.value.toUpperCase())}
-                      maxLength={12}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      格式：公司(2碼)+區域(2碼)+年度(2碼)+險種(1碼:A/K/M)+流水號(5碼)
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleCreateCase}
-                    disabled={createCaseMutation.isPending}
-                    className="w-full bg-accent text-accent-foreground"
-                  >
-                    {createCaseMutation.isPending ? "新增中..." : "新增"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
+          {/* 登出按鈕 */}
+          <LogoutButton />
+        </div>
+
+        {/* 案件統計 */}
+        <div className="mb-6 text-sm text-muted-foreground">
+          共 {displayCases.length} 個案件
+          {searchKeyword && ` (搜尋結果)`}
         </div>
 
         {/* 案件列表 */}
-        <div className="space-y-2">
-          {casesLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="animate-spin w-6 h-6" />
-            </div>
-          ) : displayCases.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchKeyword ? "未找到符合的案件" : "暫無案件"}
-            </div>
-          ) : (
-            displayCases.map((caseItem) => (
-              <div
-                key={caseItem.id}
-                className={`border border-border p-4 ${
-                  caseItem.status === "轉台北審核" ? "bg-orange-50" : "bg-white"
-                }`}
-              >
-                {/* 案件摘要行 */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex-1">
-                    <button
-                      onClick={() =>
-                        setExpandedCaseId(expandedCaseId === caseItem.id ? null : caseItem.id)
-                      }
-                      className="flex items-center gap-2 hover:text-accent transition-colors"
-                    >
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          expandedCaseId === caseItem.id ? "rotate-180" : ""
-                        }`}
-                      />
-                      <span className="font-bold text-lg">{caseItem.caseNumber}</span>
-                    </button>
-                  </div>
-
-                  {/* 狀態標籤 */}
-                  <div className="flex items-center gap-4">
-                    <span
-                      className={`px-3 py-1 text-sm font-medium ${
-                        caseItem.status === "轉台北審核"
-                          ? "bg-orange-200 text-orange-900"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {caseItem.status}
-                    </span>
-
-                    {/* 狀態切換下拉菜單（僅管理者） */}
-                    {user?.role === "admin" && (
-                      <Dialog open={selectedCaseId === caseItem.id} onOpenChange={(open) => {
-                        if (!open) {
-                          setSelectedCaseId(null);
-                          setSelectedStatus(null);
-                          setRejectReason("");
+        {casesLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="animate-spin w-8 h-8" />
+          </div>
+        ) : paginatedCases.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            {searchKeyword ? "未找到匹配的案件" : "暫無案件"}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {paginatedCases.map((caseItem) => (
+                <div
+                  key={caseItem.id}
+                  className={`border rounded-lg p-4 transition-colors ${
+                    caseItem.status === "轉台北審核"
+                      ? "bg-orange-50 border-orange-200"
+                      : "bg-white border-border hover:bg-gray-50"
+                  }`}
+                >
+                  {/* 案件行 */}
+                  <div className="flex items-center justify-between gap-4">
+                    {/* 案號 */}
+                    <div className="flex-1 min-w-0">
+                      <button
+                        onClick={() =>
+                          setExpandedCaseId(
+                            expandedCaseId === caseItem.id ? null : caseItem.id
+                          )
                         }
-                      }}>
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedCaseId(caseItem.id)}
+                        className="flex items-center gap-2 text-left hover:text-blue-600 font-mono font-semibold"
+                      >
+                        {expandedCaseId === caseItem.id ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                        {caseItem.caseNumber}
+                      </button>
+                    </div>
+
+                    {/* 狀態選擇 */}
+                    <div className="flex items-center gap-2">
+                      {editingCaseId === caseItem.id ? (
+                        <div className="flex gap-2">
+                          <Select
+                            value={selectedStatus || ""}
+                            onValueChange={(value) => {
+                              setSelectedStatus(value);
+                              if (value !== "擲回經辦人員") {
+                                setRejectReason("");
+                              }
+                            }}
                           >
-                            變更狀態
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>變更案件狀態</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div>
-                              <label className="block text-sm font-medium mb-2">新狀態</label>
-                              <Select value={selectedStatus || ""} onValueChange={setSelectedStatus}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="選擇狀態" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="進入檔案室">進入檔案室</SelectItem>
-                                  <SelectItem value="擲回經辦人員">擲回經辦人員</SelectItem>
-                                  <SelectItem value="轉台北審核">轉台北審核</SelectItem>
-                                  <SelectItem value="轉法務追償">轉法務追償</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
+                            <SelectTrigger className="w-40">
+                              <SelectValue placeholder="選擇狀態" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STATUS_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                            {/* 擲回原因備註 */}
-                            {selectedStatus === "擲回經辦人員" && (
-                              <div>
-                                <label className="block text-sm font-medium mb-2">擲回原因</label>
-                                <Input
-                                  placeholder="輸入擲回原因..."
-                                  value={rejectReason}
-                                  onChange={(e) => setRejectReason(e.target.value)}
-                                />
-                              </div>
+                          {/* 擲回原因輸入框 */}
+                          {selectedStatus === "擲回經辦人員" && (
+                            <Input
+                              placeholder="擲回原因"
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              className="w-40"
+                            />
+                          )}
+
+                          {/* 確認按鈕 */}
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (selectedStatus) {
+                                handleStatusChange(caseItem.id, selectedStatus);
+                              }
+                            }}
+                            disabled={updateStatusMutation.isPending}
+                          >
+                            {updateStatusMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              "確認"
                             )}
+                          </Button>
 
-                            <Button
-                              onClick={handleUpdateStatus}
-                              disabled={updateStatusMutation.isPending || !selectedStatus}
-                              className="w-full bg-accent text-accent-foreground"
-                            >
-                              {updateStatusMutation.isPending ? "更新中..." : "確認變更"}
-                            </Button>
+                          {/* 取消按鈕 */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingCaseId(null);
+                              setSelectedStatus(null);
+                              setRejectReason("");
+                            }}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          {/* 顯示當前狀態 */}
+                          <div
+                            className={`px-3 py-1 rounded border text-sm font-medium ${getStatusColor(
+                              caseItem.status
+                            )}`}
+                          >
+                            {caseItem.status}
                           </div>
-                        </DialogContent>
-                      </Dialog>
-                    )}
-                  </div>
-                </div>
 
-                {/* 展開的歷史時間軸 */}
-                {expandedCaseId === caseItem.id && (
-                  <div className="mt-4 pt-4 border-t border-border">
-                    <CaseHistory caseId={caseItem.id} />
+                          {/* 編輯按鈕 */}
+                          {user?.role === "admin" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingCaseId(caseItem.id);
+                                setSelectedStatus(caseItem.status);
+                              }}
+                            >
+                              編輯
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                )}
+
+                  {/* 展開的歷史時間軸 */}
+                  {expandedCaseId === caseItem.id && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <CaseHistory caseId={caseItem.id} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* 分頁控制 */}
+            {totalPages > 1 && (
+              <div className="flex justify-center gap-2 mt-8">
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                >
+                  上一頁
+                </Button>
+                <div className="flex items-center gap-2">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      onClick={() => setCurrentPage(page)}
+                      className="w-10"
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  下一頁
+                </Button>
               </div>
-            ))
-          )}
-        </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
