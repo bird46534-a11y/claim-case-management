@@ -10,6 +10,7 @@ import { Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import CaseHistory from "@/components/CaseHistory";
 import ExportButton from "@/components/ExportButton";
+import { getLoginUrl } from "@/const";
 
 export default function CaseList() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -134,7 +135,7 @@ export default function CaseList() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-lg mb-4">請登入以繼續</p>
-          <Button onClick={() => (window.location.href = "/api/oauth/login")}>登入</Button>
+          <Button onClick={() => (window.location.href = getLoginUrl())}>登入</Button>
         </div>
       </div>
     );
