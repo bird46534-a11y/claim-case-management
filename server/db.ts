@@ -109,18 +109,23 @@ export async function createCase(input: {
 }
 
 /**
- * 取得所有案件（包含最新狀態）
+ * 取得所有案件（按區域代碼和流水號正序排列）
  */
 export async function getAllCases() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.select().from(cases);
+  // 按照案號正序排列（區域代碼 + 流水號）
+  const result = await db
+    .select()
+    .from(cases)
+    .orderBy(sql`SUBSTRING(${cases.caseNumber}, 3, 2), SUBSTRING(${cases.caseNumber}, 9, 5)`);
+  
   return result;
 }
 
 /**
- * 根據案號搜尋案件（支援模糊搜尋）
+ * 根據案號戠尋案件（支援模糊戠尋，按區域代碼和流水號正序排列）
  */
 export async function searchCases(keyword: string) {
   const db = await getDb();
@@ -131,7 +136,8 @@ export async function searchCases(keyword: string) {
     .from(cases)
     .where(
       sql`${cases.caseNumber} LIKE ${`%${keyword}%`}`
-    );
+    )
+    .orderBy(sql`SUBSTRING(${cases.caseNumber}, 3, 2), SUBSTRING(${cases.caseNumber}, 9, 5)`);
 
   return result;
 }
@@ -171,8 +177,17 @@ export async function getCaseHistory(caseId: number) {
   if (!db) throw new Error("Database not available");
 
   const result = await db
-    .select()
+    .select({
+      id: statusHistory.id,
+      caseId: statusHistory.caseId,
+      status: statusHistory.status,
+      operatorId: statusHistory.operatorId,
+      operatorName: users.name,
+      changedAt: statusHistory.changedAt,
+      reason: statusHistory.reason,
+    })
     .from(statusHistory)
+    .leftJoin(users, eq(statusHistory.operatorId, users.id))
     .where(eq(statusHistory.caseId, caseId))
     .orderBy(statusHistory.changedAt);
 

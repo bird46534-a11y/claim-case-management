@@ -7,7 +7,9 @@
  * - 區域代碼：16(嘉義)、17(新營)、18(台南)、29(佳里)、30(雲林)、37(永康)
  * - 年度：18（2018年，固定）
  * - 險種：A（固定）
- * - 流水號：00001~05000
+ * - 流水號：每個區域都是 00001~05000
+ * 
+ * 總案件數：6 個區域 × 5000 個流水號 = 30000 個案件
  */
 
 import mysql from "mysql2/promise";
@@ -48,7 +50,7 @@ const REGIONS = [
 const COMPANY = "10";
 const YEAR = "18";
 const INSURANCE_TYPE = "A";
-const TOTAL_CASES = 5000;
+const CASES_PER_REGION = 5000;
 
 async function generateCases() {
   let connection;
@@ -61,8 +63,9 @@ async function generateCases() {
 
   try {
     console.log("開始生成案件清單...");
-    console.log(`總案件數：${TOTAL_CASES}`);
     console.log(`區域數：${REGIONS.length}`);
+    console.log(`每個區域的案件數：${CASES_PER_REGION}`);
+    console.log(`總案件數：${REGIONS.length * CASES_PER_REGION}`);
 
     // 檢查是否已存在案件
     const [existingCases] = await connection.execute(
@@ -71,39 +74,38 @@ async function generateCases() {
     
     if (existingCases[0].count > 0) {
       console.log(`警告：資料庫中已存在 ${existingCases[0].count} 個案件`);
-      console.log("是否要繼續？(y/n)");
-      
-      // 由於這是 Node.js 腳本，我們直接繼續
-      // 在實際使用中可以添加交互式確認
+      console.log("清空現有案件並重新生成...");
+      await connection.execute("DELETE FROM statusHistory");
+      await connection.execute("DELETE FROM cases");
+      console.log("✓ 已清空現有案件");
     }
 
     // 準備批量插入
     const cases = [];
     let caseIndex = 0;
 
-    for (let i = 1; i <= TOTAL_CASES; i++) {
-      const regionIndex = (i - 1) % REGIONS.length;
-      const region = REGIONS[regionIndex];
-      
-      // 生成案號：公司(2碼) + 區域(2碼) + 年度(2碼) + 險種(1碼) + 流水號(5碼)
-      const sequenceNumber = String(i).padStart(5, "0");
-      const caseNumber = `${COMPANY}${region.code}${YEAR}${INSURANCE_TYPE}${sequenceNumber}`;
-      
-      cases.push({
-        caseNumber,
-        status: "進入檔案室", // 預設狀態
-        createdBy: 1, // 假設 user id 1 為系統管理員
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+    // 為每個區域生成 00001~05000 的流水號
+    for (const region of REGIONS) {
+      for (let i = 1; i <= CASES_PER_REGION; i++) {
+        const sequenceNumber = String(i).padStart(5, "0");
+        const caseNumber = `${COMPANY}${region.code}${YEAR}${INSURANCE_TYPE}${sequenceNumber}`;
+        
+        cases.push({
+          caseNumber,
+          status: "進入檔案室", // 預設狀態
+          createdBy: 1, // 假設 user id 1 為系統管理員
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
 
-      caseIndex++;
+        caseIndex++;
 
-      // 每 1000 個案件批量插入一次
-      if (caseIndex % 1000 === 0) {
-        await insertBatch(connection, cases);
-        console.log(`已生成 ${caseIndex} 個案件...`);
-        cases.length = 0;
+        // 每 1000 個案件批量插入一次
+        if (caseIndex % 1000 === 0) {
+          await insertBatch(connection, cases);
+          console.log(`已生成 ${caseIndex} 個案件...`);
+          cases.length = 0;
+        }
       }
     }
 
@@ -113,13 +115,21 @@ async function generateCases() {
       console.log(`已生成 ${caseIndex} 個案件...`);
     }
 
-    console.log(`✓ 成功生成 ${TOTAL_CASES} 個案件`);
+    console.log(`✓ 成功生成 ${caseIndex} 個案件`);
 
     // 驗證
     const [result] = await connection.execute(
       "SELECT COUNT(*) as count FROM cases"
     );
     console.log(`資料庫中現有案件數：${result[0].count}`);
+
+    // 顯示每個區域的案件數
+    for (const region of REGIONS) {
+      const [regionResult] = await connection.execute(
+        `SELECT COUNT(*) as count FROM cases WHERE caseNumber LIKE '${COMPANY}${region.code}${YEAR}${INSURANCE_TYPE}%'`
+      );
+      console.log(`  區域 ${region.name}(${region.code})：${regionResult[0].count} 個案件`);
+    }
 
   } catch (error) {
     console.error("錯誤：", error.message);

@@ -51,6 +51,7 @@ export default function CaseList() {
   const [rejectReason, setRejectReason] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   // 查詢案件列表
   const { data: allCases = [], isLoading: casesLoading, refetch: refetchCases } = trpc.cases.list.useQuery();
@@ -159,6 +160,13 @@ export default function CaseList() {
 
           {/* Excel 匯出按鈕 */}
           <ExportButton />
+
+          {/* 帳戶管理按鈕 */}
+          {user?.role === "admin" && (
+            <Button variant="outline" onClick={() => setShowAccountMenu(!showAccountMenu)}>
+              帳戶管理
+            </Button>
+          )}
 
           {/* 登出按鈕 */}
           <LogoutButton />

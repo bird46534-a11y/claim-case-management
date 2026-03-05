@@ -42,6 +42,7 @@ export default function CaseHistory({ caseId }: CaseHistoryProps) {
                   {new Date(record.changedAt).toLocaleString("zh-TW")}
                 </span>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">操作人: {record.operatorName || "未知"}</p>
               {record.reason && (
                 <p className="text-xs text-muted-foreground mt-1">原因：{record.reason}</p>
               )}
