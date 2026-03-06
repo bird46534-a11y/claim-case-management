@@ -22,7 +22,7 @@ const REGIONS = [
   { code: "37", name: "永康" },
 ];
 
-const INSURANCE_TYPES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+const INSURANCE_TYPES = ["A", "K", "M"];
 
 export default function CreateCaseModal({ isOpen, onClose, onSuccess }: CreateCaseModalProps) {
   const [year, setYear] = useState("15");
