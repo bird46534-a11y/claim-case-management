@@ -33,10 +33,34 @@ export const appRouter = router({
         return results;
       }),
 
+    // 多條件查詢 API
+    filter: publicProcedure
+      .input(
+        z.object({
+          year: z.number().optional(),
+          regionCode: z.string().optional(),
+          insuranceType: z.string().optional(),
+          serialNumber: z.string().optional(),
+        })
+      )
+      .query(async ({ input }) => {
+        const results = await db.queryCasesByFilters({
+          year: input.year,
+          regionCode: input.regionCode,
+          insuranceType: input.insuranceType,
+          serialNumber: input.serialNumber ? parseInt(input.serialNumber) : undefined,
+        });
+        return results;
+      }),
+
+    // 新增案件 API - 接收分解的參數
     create: protectedProcedure
       .input(
         z.object({
-          caseNumber: z.string().regex(/^[0-9]{2}[0-9]{2}[0-9]{2}[AKM][0-9]{5}$/, "案號格式不正確"),
+          year: z.number().min(10).max(30),
+          regionCode: z.string().regex(/^(16|17|18|29|30|37)$/, "無效的區域代碼"),
+          insuranceType: z.string().regex(/^[A-Z]$/, "險種必須為單一大寫字母"),
+          serialNumber: z.number().min(1).max(99999),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -45,8 +69,14 @@ export const appRouter = router({
         }
 
         try {
+          // 組合案號：公司(10) + 區域(2) + 年度(2) + 險種(1) + 流水號(5)
+          const companyCode = "10";
+          const yearStr = String(input.year).padStart(2, '0');
+          const serialStr = String(input.serialNumber).padStart(5, '0');
+          const caseNumber = `${companyCode}${input.regionCode}${yearStr}${input.insuranceType}${serialStr}`;
+
           const result = await db.createCase({
-            caseNumber: input.caseNumber,
+            caseNumber,
             createdBy: ctx.user.id,
           });
 
@@ -54,13 +84,17 @@ export const appRouter = router({
           const io = (ctx.req as any).app?.io;
           if (io) {
             io.emit("case:created", {
-              caseNumber: input.caseNumber,
+              caseNumber,
+              year: input.year,
+              regionCode: input.regionCode,
+              insuranceType: input.insuranceType,
+              serialNumber: input.serialNumber,
               createdBy: ctx.user.id,
               createdAt: new Date(),
             });
           }
 
-          return { success: true };
+          return { success: true, caseNumber };
         } catch (error) {
           if ((error as any).code === "ER_DUP_ENTRY") {
             throw new TRPCError({ code: "BAD_REQUEST", message: "案號已存在" });

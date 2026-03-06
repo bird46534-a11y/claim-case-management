@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, cases, statusHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -101,8 +101,8 @@ export async function createCase(input: {
 
   const result = await db.insert(cases).values({
     caseNumber: input.caseNumber,
+    status: "進入檔案室",
     createdBy: input.createdBy,
-    status: "進入檔案室", // 預設狀態
   });
 
   return result;
@@ -125,7 +125,7 @@ export async function getAllCases() {
 }
 
 /**
- * 根據案號戠尋案件（支援模糊戠尋，按區域代碼和流水號正序排列）
+ * 根據案號搜尋案件（支援模糊搜尋，按區域代碼和流水號正序排列）
  */
 export async function searchCases(keyword: string) {
   const db = await getDb();
@@ -138,6 +138,57 @@ export async function searchCases(keyword: string) {
       sql`${cases.caseNumber} LIKE ${`%${keyword}%`}`
     )
     .orderBy(sql`SUBSTRING(${cases.caseNumber}, 3, 2), SUBSTRING(${cases.caseNumber}, 9, 5)`);
+
+  return result;
+}
+
+/**
+ * 多條件動態查詢案件
+ * 支援篩選：year, region_code, insurance_type, serial_number
+ */
+export async function queryCasesByFilters(filters: {
+  year?: number;
+  regionCode?: string;
+  insuranceType?: string;
+  serialNumber?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 案號格式：公司(2) + 區域(2) + 年度(2) + 險種(1) + 流水號(5)
+  const conditions: any[] = [];
+
+  if (filters.year) {
+    const yearStr = String(filters.year).padStart(2, '0');
+    conditions.push(sql`SUBSTRING(${cases.caseNumber}, 5, 2) = ${yearStr}`);
+  }
+
+  if (filters.regionCode) {
+    conditions.push(sql`SUBSTRING(${cases.caseNumber}, 3, 2) = ${filters.regionCode}`);
+  }
+
+  if (filters.insuranceType) {
+    conditions.push(sql`SUBSTRING(${cases.caseNumber}, 7, 1) = ${filters.insuranceType}`);
+  }
+
+  if (filters.serialNumber) {
+    const serialStr = String(filters.serialNumber).padStart(5, '0');
+    conditions.push(sql`SUBSTRING(${cases.caseNumber}, 8, 5) = ${serialStr}`);
+  }
+
+  // 組合所有條件
+  if (conditions.length === 0) {
+    return getAllCases();
+  }
+
+  // 按區域代碼正序 > 流水號正序排列
+  const result = await db
+    .select()
+    .from(cases)
+    .where(and(...(conditions as any)))
+    .orderBy(
+      sql`SUBSTRING(${cases.caseNumber}, 3, 2), SUBSTRING(${cases.caseNumber}, 8, 5)`
+    );
 
   return result;
 }
@@ -212,5 +263,6 @@ export async function getCaseById(caseId: number) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1);
+
   return result.length > 0 ? result[0] : undefined;
 }

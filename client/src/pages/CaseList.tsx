@@ -5,10 +5,12 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { toast } from "sonner";
 import CaseHistory from "@/components/CaseHistory";
 import ExportButton from "@/components/ExportButton";
+import CreateCaseModal from "@/components/CreateCaseModal";
+import FilterBar from "@/components/FilterBar";
 import { getLoginUrl } from "@/const";
 
 const STATUS_OPTIONS = [
@@ -44,14 +46,22 @@ function LogoutButton() {
 export default function CaseList() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { subscribe } = useWebSocket();
+  
+  // 搜尋和篩選狀態
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [filterYear, setFilterYear] = useState<number | undefined>();
+  const [filterRegion, setFilterRegion] = useState<string | undefined>();
+  const [filterInsuranceType, setFilterInsuranceType] = useState<string | undefined>();
+  const [filterSerialNumber, setFilterSerialNumber] = useState<string | undefined>();
+  
+  // UI 狀態
   const [expandedCaseId, setExpandedCaseId] = useState<number | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const itemsPerPage = 50;
-  const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   // 查詢案件列表
   const { data: allCases = [], isLoading: casesLoading, refetch: refetchCases } = trpc.cases.list.useQuery();
@@ -60,6 +70,17 @@ export default function CaseList() {
   const { data: searchResults = [] } = trpc.cases.search.useQuery(
     { keyword: searchKeyword },
     { enabled: searchKeyword.length > 0 }
+  );
+
+  // 多條件篩選查詢
+  const { data: filteredResults = [] } = trpc.cases.filter.useQuery(
+    {
+      year: filterYear,
+      regionCode: filterRegion,
+      insuranceType: filterInsuranceType,
+      serialNumber: filterSerialNumber,
+    },
+    { enabled: !!(filterYear || filterRegion || filterInsuranceType || filterSerialNumber) }
   );
 
   // 更新案件狀態
@@ -76,8 +97,42 @@ export default function CaseList() {
     },
   });
 
+  // 決定顯示的案件清單
+  const displayCases = searchKeyword 
+    ? searchResults 
+    : (filterYear || filterRegion || filterInsuranceType || filterSerialNumber)
+      ? filteredResults
+      : allCases;
+
+  // 分頁
+  const totalPages = Math.ceil(displayCases.length / itemsPerPage);
+  const paginatedCases = displayCases.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // 檢查新增的案件是否符合當前篩選條件
+  const matchesFilters = (caseData: any) => {
+    if (filterYear && caseData.year !== filterYear) return false;
+    if (filterRegion && caseData.regionCode !== filterRegion) return false;
+    if (filterInsuranceType && caseData.insuranceType !== filterInsuranceType) return false;
+    if (filterSerialNumber && caseData.serialNumber !== parseInt(filterSerialNumber)) return false;
+    return true;
+  };
+
   // 設置 WebSocket 事件監聽
   useEffect(() => {
+    const unsubscribeCreated = subscribe("case:created", (data: any) => {
+      console.log("[WebSocket] Received case:created event", data);
+      toast.success(`新案件已建立：${data.caseNumber}`);
+      // 只有當新案件符合當前篩選條件時，才重新取得清單
+      if (!searchKeyword && !filterYear && !filterRegion && !filterInsuranceType && !filterSerialNumber) {
+        refetchCases();
+      } else if (matchesFilters(data)) {
+        refetchCases();
+      }
+    });
+
     const unsubscribeUpdated = subscribe("case:updated", (data: any) => {
       console.log("[WebSocket] Received case:updated event", data);
       toast.info(`案件 ${data.caseId} 狀態已更新為：${data.status}`);
@@ -91,6 +146,7 @@ export default function CaseList() {
     });
 
     return () => {
+      if (unsubscribeCreated) unsubscribeCreated();
       if (unsubscribeUpdated) unsubscribeUpdated();
       if (unsubscribeDeleted) unsubscribeDeleted();
     };
@@ -98,55 +154,48 @@ export default function CaseList() {
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="animate-spin w-8 h-8" />
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-lg mb-4">請登入以繼續</p>
-          <Button onClick={() => (window.location.href = getLoginUrl())}>登入</Button>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <h1 className="text-2xl font-bold">理賠案件管理系統</h1>
+        <p className="text-muted-foreground">請登入以繼續</p>
+        <Button onClick={() => (window.location.href = getLoginUrl())}>
+          登入
+        </Button>
       </div>
     );
   }
 
-  // 決定顯示的案件列表
-  const displayCases = searchKeyword.length > 0 ? searchResults : allCases;
-
-  // 分頁
-  const totalPages = Math.ceil(displayCases.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedCases = displayCases.slice(startIndex, startIndex + itemsPerPage);
-
-  const handleStatusChange = (caseId: number, newStatus: string) => {
-    if (!user) return;
-
-    updateStatusMutation.mutate({
-      caseId,
-      status: newStatus as any,
-      reason: newStatus === "擲回經辦人員" ? rejectReason : undefined,
-    });
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      {/* 標題區域 */}
-      <div className="border-b border-border p-6">
-        <h1 className="text-3xl font-bold text-foreground mb-2">理賠案件管理系統</h1>
-        <p className="text-muted-foreground">歡迎，{user?.name || "使用者"}</p>
-      </div>
+      <div className="container mx-auto py-8 px-4">
+        {/* 標題與操作欄 */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold">理賠案件管理系統</h1>
+            <div className="flex gap-2">
+              {user?.role === "admin" && (
+                <Button
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  建立新案件
+                </Button>
+              )}
+              <ExportButton />
+              <LogoutButton />
+            </div>
+          </div>
 
-      {/* 主要內容區域 */}
-      <div className="container py-8">
-        {/* 操作欄 */}
-        <div className="flex gap-4 mb-8 flex-wrap items-center">
           {/* 搜尋框 */}
-          <div className="flex-1 min-w-64">
+          <div className="mb-4">
             <Input
               placeholder="搜尋案號..."
               value={searchKeyword}
@@ -158,206 +207,189 @@ export default function CaseList() {
             />
           </div>
 
-          {/* Excel 匯出按鈕 */}
-          <ExportButton />
-
-          {/* 帳戶管理按鈕 */}
-          {user?.role === "admin" && (
-            <Button variant="outline" onClick={() => setShowAccountMenu(!showAccountMenu)}>
-              帳戶管理
-            </Button>
-          )}
-
-          {/* 登出按鈕 */}
-          <LogoutButton />
+          {/* 篩選工具列 */}
+          <FilterBar
+            year={filterYear}
+            onYearChange={setFilterYear}
+            regionCode={filterRegion}
+            onRegionChange={setFilterRegion}
+            insuranceType={filterInsuranceType}
+            onInsuranceTypeChange={setFilterInsuranceType}
+            serialNumber={filterSerialNumber}
+            onSerialNumberChange={setFilterSerialNumber}
+            onClearAll={() => {
+              setFilterYear(undefined);
+              setFilterRegion(undefined);
+              setFilterInsuranceType(undefined);
+              setFilterSerialNumber(undefined);
+              setCurrentPage(1);
+            }}
+          />
         </div>
 
         {/* 案件統計 */}
         <div className="mb-6 text-sm text-muted-foreground">
           共 {displayCases.length} 個案件
           {searchKeyword && ` (搜尋結果)`}
+          {(filterYear || filterRegion || filterInsuranceType || filterSerialNumber) && ` (篩選結果)`}
         </div>
 
         {/* 案件列表 */}
         {casesLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="animate-spin w-8 h-8" />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin" />
           </div>
         ) : paginatedCases.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            {searchKeyword ? "未找到匹配的案件" : "暫無案件"}
+          <div className="text-center py-12 text-muted-foreground">
+            {displayCases.length === 0 ? "暫無案件" : "此頁無案件"}
           </div>
         ) : (
-          <>
-            <div className="space-y-2">
-              {paginatedCases.map((caseItem) => (
-                <div
-                  key={caseItem.id}
-                  className={`border rounded-lg p-4 transition-colors ${
-                    caseItem.status === "轉台北審核"
-                      ? "bg-orange-50 border-orange-200"
-                      : "bg-white border-border hover:bg-gray-50"
-                  }`}
-                >
-                  {/* 案件行 */}
-                  <div className="flex items-center justify-between gap-4">
-                    {/* 案號 */}
-                    <div className="flex-1 min-w-0">
-                      <button
-                        onClick={() =>
-                          setExpandedCaseId(
-                            expandedCaseId === caseItem.id ? null : caseItem.id
-                          )
-                        }
-                        className="flex items-center gap-2 text-left hover:text-blue-600 font-mono font-semibold"
-                      >
-                        {expandedCaseId === caseItem.id ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
+          <div className="space-y-2">
+            {paginatedCases.map((caseItem) => (
+              <div
+                key={caseItem.id}
+                className={`border rounded-lg p-4 ${
+                  caseItem.status === "轉台北審核" ? "bg-orange-50 border-orange-300" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <button
+                      onClick={() =>
+                        setExpandedCaseId(expandedCaseId === caseItem.id ? null : caseItem.id)
+                      }
+                      className="flex items-center gap-2 font-mono font-bold text-lg hover:text-red-600"
+                    >
+                      {expandedCaseId === caseItem.id ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                      {caseItem.caseNumber}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {editingCaseId === caseItem.id ? (
+                      <div className="flex gap-2">
+                        <Select value={selectedStatus || "placeholder"} onValueChange={setSelectedStatus}>
+                          <SelectTrigger className="w-40">
+                            <SelectValue placeholder="選擇狀態" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="placeholder" disabled>
+                              選擇狀態
+                            </SelectItem>
+                            {STATUS_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {selectedStatus === "擲回經辦人員" && (
+                          <Input
+                            placeholder="擲回原因"
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            className="w-40"
+                          />
                         )}
-                        {caseItem.caseNumber}
-                      </button>
-                    </div>
 
-                    {/* 狀態選擇 */}
-                    <div className="flex items-center gap-2">
-                      {editingCaseId === caseItem.id ? (
-                        <div className="flex gap-2">
-                          <Select
-                            value={selectedStatus || ""}
-                            onValueChange={(value) => {
-                              setSelectedStatus(value);
-                              if (value !== "擲回經辦人員") {
-                                setRejectReason("");
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="選擇狀態" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {STATUS_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (!selectedStatus) {
+                              toast.error("請選擇狀態");
+                              return;
+                            }
+                            updateStatusMutation.mutate({
+                              caseId: caseItem.id,
+                              status: selectedStatus as any,
+                              reason: rejectReason || undefined,
+                            });
+                          }}
+                          disabled={updateStatusMutation.isPending}
+                        >
+                          確認
+                        </Button>
 
-                          {/* 擲回原因輸入框 */}
-                          {selectedStatus === "擲回經辦人員" && (
-                            <Input
-                              placeholder="擲回原因"
-                              value={rejectReason}
-                              onChange={(e) => setRejectReason(e.target.value)}
-                              className="w-40"
-                            />
-                          )}
-
-                          {/* 確認按鈕 */}
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (selectedStatus) {
-                                handleStatusChange(caseItem.id, selectedStatus);
-                              }
-                            }}
-                            disabled={updateStatusMutation.isPending}
-                          >
-                            {updateStatusMutation.isPending ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              "確認"
-                            )}
-                          </Button>
-
-                          {/* 取消按鈕 */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingCaseId(null);
+                            setSelectedStatus(null);
+                            setRejectReason("");
+                          }}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={`px-3 py-1 rounded border text-sm font-medium ${getStatusColor(caseItem.status)}`}>
+                          {caseItem.status}
+                        </div>
+                        {user?.role === "admin" && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              setEditingCaseId(null);
-                              setSelectedStatus(null);
-                              setRejectReason("");
+                              setEditingCaseId(caseItem.id);
+                              setSelectedStatus(caseItem.status);
                             }}
                           >
-                            取消
+                            編輯
                           </Button>
-                        </div>
-                      ) : (
-                        <>
-                          {/* 顯示當前狀態 */}
-                          <div
-                            className={`px-3 py-1 rounded border text-sm font-medium ${getStatusColor(
-                              caseItem.status
-                            )}`}
-                          >
-                            {caseItem.status}
-                          </div>
-
-                          {/* 編輯按鈕 */}
-                          {user?.role === "admin" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setEditingCaseId(caseItem.id);
-                                setSelectedStatus(caseItem.status);
-                              }}
-                            >
-                              編輯
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
+                        )}
+                      </>
+                    )}
                   </div>
-
-                  {/* 展開的歷史時間軸 */}
-                  {expandedCaseId === caseItem.id && (
-                    <div className="mt-4 pt-4 border-t border-border">
-                      <CaseHistory caseId={caseItem.id} />
-                    </div>
-                  )}
                 </div>
-              ))}
-            </div>
 
-            {/* 分頁控制 */}
-            {totalPages > 1 && (
-              <div className="flex justify-center gap-2 mt-8">
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                >
-                  上一頁
-                </Button>
-                <div className="flex items-center gap-2">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      onClick={() => setCurrentPage(page)}
-                      className="w-10"
-                    >
-                      {page}
-                    </Button>
-                  ))}
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  下一頁
-                </Button>
+                {/* 展開的歷史時間軸 */}
+                {expandedCaseId === caseItem.id && (
+                  <div className="mt-4 pt-4 border-t">
+                    <CaseHistory caseId={caseItem.id} />
+                  </div>
+                )}
               </div>
-            )}
-          </>
+            ))}
+          </div>
+        )}
+
+        {/* 分頁控制 */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+            >
+              上一頁
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              第 {currentPage} / {totalPages} 頁
+            </span>
+            <Button
+              variant="outline"
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+            >
+              下一頁
+            </Button>
+          </div>
         )}
       </div>
+
+      {/* 建立新案件彈窗 */}
+      <CreateCaseModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={() => refetchCases()}
+      />
     </div>
   );
 }
