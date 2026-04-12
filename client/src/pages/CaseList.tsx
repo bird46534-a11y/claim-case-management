@@ -5,6 +5,7 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Loader2, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { toast } from "sonner";
 import CaseHistory from "@/components/CaseHistory";
@@ -94,6 +95,17 @@ export default function CaseList() {
     },
     onError: (error) => {
       toast.error(error.message || "更新狀態失敗");
+    },
+  });
+
+  // 刪除案件
+  const deleteCaseMutation = trpc.cases.delete.useMutation({
+    onSuccess: () => {
+      toast.success("案件已刪除");
+      refetchCases();
+    },
+    onError: (error) => {
+      toast.error(error.message || "刪除案件失敗");
     },
   });
 
@@ -333,16 +345,47 @@ export default function CaseList() {
                           {caseItem.status}
                         </div>
                         {user?.role === "admin" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setEditingCaseId(caseItem.id);
-                              setSelectedStatus(caseItem.status);
-                            }}
-                          >
-                            編輯
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingCaseId(caseItem.id);
+                                setSelectedStatus(caseItem.status);
+                              }}
+                            >
+                              編輯
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                >
+                                  刪除
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>確認刪除案件</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    確定要刪除案件 {caseItem.caseNumber} 嗎？此操作無法復原。
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>取消</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      deleteCaseMutation.mutate({ caseId: caseItem.id });
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    確認刪除
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
                         )}
                       </>
                     )}

@@ -49,3 +49,11 @@
 - [x] 更新前端 CreateCaseModal 與 FilterBar
 - [x] 測試險種選擇功能
 - [x] 驗證新增案件時的險種校驗
+
+
+## 刪除案件功能
+- [x] 在後端實作 cases.delete API
+- [x] 在前端新增刪除按鈕
+- [x] 新增刪除確認對話框
+- [x] 測試刪除功能
+- [x] 驗證 WebSocket 廣播刪除事件
