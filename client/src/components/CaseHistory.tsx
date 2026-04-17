@@ -46,6 +46,9 @@ export default function CaseHistory({ caseId }: CaseHistoryProps) {
               {record.reason && (
                 <p className="text-xs text-muted-foreground mt-1">原因：{record.reason}</p>
               )}
+              {record.transferLegalInfo && (
+                <p className="text-xs text-muted-foreground mt-1">轉法務追償信息：{record.transferLegalInfo}</p>
+              )}
             </div>
           </div>
         ))}

@@ -109,6 +109,7 @@ export const appRouter = router({
           caseId: z.number(),
           status: z.enum(["進入檔案室", "擲回經辦人員", "轉台北審核", "轉法務追償"]),
           reason: z.string().optional(),
+          transferLegalInfo: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -121,6 +122,7 @@ export const appRouter = router({
           status: input.status,
           operatorId: ctx.user.id,
           reason: input.reason,
+          transferLegalInfo: input.transferLegalInfo,
         });
 
         // 發送 WebSocket 事件通知所有客戶端
@@ -131,6 +133,7 @@ export const appRouter = router({
             status: input.status,
             operatorId: ctx.user.id,
             reason: input.reason,
+            transferLegalInfo: input.transferLegalInfo,
             updatedAt: new Date(),
           });
         }

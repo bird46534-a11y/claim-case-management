@@ -15,6 +15,13 @@
       "when": 1772585033854,
       "tag": "0001_ambitious_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1776412018794,
+      "tag": "0002_wakeful_scarecrow",
+      "breakpoints": true
     }
   ]
 }

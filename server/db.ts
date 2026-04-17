@@ -201,6 +201,7 @@ export async function updateCaseStatus(input: {
   status: "進入檔案室" | "擲回經辦人員" | "轉台北審核" | "轉法務追償";
   operatorId: number;
   reason?: string;
+  transferLegalInfo?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -217,6 +218,7 @@ export async function updateCaseStatus(input: {
     status: input.status,
     operatorId: input.operatorId,
     reason: input.reason,
+    transferLegalInfo: input.transferLegalInfo,
   });
 }
 
@@ -236,6 +238,7 @@ export async function getCaseHistory(caseId: number) {
       operatorName: users.name,
       changedAt: statusHistory.changedAt,
       reason: statusHistory.reason,
+      transferLegalInfo: statusHistory.transferLegalInfo,
     })
     .from(statusHistory)
     .leftJoin(users, eq(statusHistory.operatorId, users.id))

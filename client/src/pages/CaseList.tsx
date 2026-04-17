@@ -60,6 +60,7 @@ export default function CaseList() {
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [transferLegalInfo, setTransferLegalInfo] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const itemsPerPage = 50;
@@ -91,6 +92,7 @@ export default function CaseList() {
       setEditingCaseId(null);
       setSelectedStatus(null);
       setRejectReason("");
+      setTransferLegalInfo("");
       refetchCases();
     },
     onError: (error) => {
@@ -309,6 +311,15 @@ export default function CaseList() {
                           />
                         )}
 
+                        {selectedStatus === "轉法務追償" && (
+                          <Input
+                            placeholder="轉法務追償信息"
+                            value={transferLegalInfo}
+                            onChange={(e) => setTransferLegalInfo(e.target.value)}
+                            className="w-40"
+                          />
+                        )}
+
                         <Button
                           size="sm"
                           onClick={() => {
@@ -320,6 +331,7 @@ export default function CaseList() {
                               caseId: caseItem.id,
                               status: selectedStatus as any,
                               reason: rejectReason || undefined,
+                              transferLegalInfo: transferLegalInfo || undefined,
                             });
                           }}
                           disabled={updateStatusMutation.isPending}
@@ -334,6 +346,7 @@ export default function CaseList() {
                             setEditingCaseId(null);
                             setSelectedStatus(null);
                             setRejectReason("");
+                            setTransferLegalInfo("");
                           }}
                         >
                           取消

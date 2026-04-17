@@ -1,0 +1,1 @@
+ALTER TABLE `statusHistory` ADD `transferLegalInfo` text;

@@ -70,7 +70,15 @@ export const statusHistory = mysqlTable("statusHistory", {
   operatorId: int("operatorId").notNull().references(() => users.id),
   changedAt: timestamp("changedAt").defaultNow().notNull(),
   reason: text("reason"), // 擲回原因
+  transferLegalInfo: text("transferLegalInfo"), // 轉法務追償信息
 });
 
 export type StatusHistory = typeof statusHistory.$inferSelect;
 export type InsertStatusHistory = typeof statusHistory.$inferInsert;
+
+// 狀態變更信息類型
+export type StatusChangeInfo = {
+  status: string;
+  reason?: string; // 擲回原因
+  transferLegalInfo?: string; // 轉法務追償信息
+};
