@@ -24,11 +24,20 @@ const REGIONS = [
 
 const INSURANCE_TYPES = ["A", "K", "M"];
 
+const STATUS_OPTIONS = [
+  { value: "entering_archive", label: "進入檔案室" },
+  { value: "returned", label: "擲回經辦人員" },
+  { value: "transfer_taipei", label: "轉台北審核" },
+  { value: "transfer_legal", label: "轉法務追償" },
+];
+
 export default function CreateCaseModal({ isOpen, onClose, onSuccess }: CreateCaseModalProps) {
   const [year, setYear] = useState("15");
   const [regionCode, setRegionCode] = useState("16");
   const [insuranceType, setInsuranceType] = useState("A");
   const [serialNumber, setSerialNumber] = useState("");
+  const [status, setStatus] = useState("");
+  const [info, setInfo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const createMutation = trpc.cases.create.useMutation();
@@ -50,18 +59,35 @@ export default function CreateCaseModal({ isOpen, onClose, onSuccess }: CreateCa
 
     setIsLoading(true);
     try {
-      await createMutation.mutateAsync({
+      const payload: any = {
         year: parseInt(year),
         regionCode,
         insuranceType,
         serialNumber: parseInt(serialNumber),
-      });
+      };
+
+      // 如果選擇了狀態，則添加到 payload
+      if (status) {
+        payload.status = status;
+        // 如果是需要信息的狀態，添加信息
+        if ((status === "returned" || status === "transfer_legal") && info) {
+          if (status === "returned") {
+            payload.returnReason = info;
+          } else if (status === "transfer_legal") {
+            payload.transferLegalInfo = info;
+          }
+        }
+      }
+
+      await createMutation.mutateAsync(payload);
 
       toast.success("案件建立成功");
       setSerialNumber("");
       setYear("15");
       setRegionCode("16");
       setInsuranceType("A");
+      setStatus("");
+      setInfo("");
       onClose();
       onSuccess?.();
     } catch (error) {
@@ -155,6 +181,49 @@ export default function CreateCaseModal({ isOpen, onClose, onSuccess }: CreateCa
               {generatePreview()}
             </div>
           </div>
+
+          {/* 狀態選擇 */}
+          <div className="space-y-2">
+            <Label htmlFor="status">初始狀態 (可選)</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger id="status">
+                <SelectValue placeholder="選擇狀態" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">不設定狀態</SelectItem>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 信息欄位 - 根據狀態動態顯示 */}
+          {status === "returned" && (
+            <div className="space-y-2">
+              <Label htmlFor="returnReason">擲回原因</Label>
+              <Input
+                id="returnReason"
+                placeholder="輸入擲回原因"
+                value={info}
+                onChange={(e) => setInfo(e.target.value)}
+              />
+            </div>
+          )}
+
+          {status === "transfer_legal" && (
+            <div className="space-y-2">
+              <Label htmlFor="transferLegalInfo">轉法務追償信息</Label>
+              <Input
+                id="transferLegalInfo"
+                placeholder="輸入追償相關信息"
+                value={info}
+                onChange={(e) => setInfo(e.target.value)}
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter>

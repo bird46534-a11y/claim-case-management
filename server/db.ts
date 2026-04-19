@@ -95,15 +95,42 @@ export async function getUserByOpenId(openId: string) {
 export async function createCase(input: {
   caseNumber: string;
   createdBy: number;
+  status?: string;
+  returnReason?: string;
+  transferLegalInfo?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // 將前端的狀態值轉換為中文狀態
+  const statusMap: Record<string, string> = {
+    "entering_archive": "進入檔案室",
+    "returned": "擲回經辦人員",
+    "transfer_taipei": "轉台北審核",
+    "transfer_legal": "轉法務追償",
+  };
+
+  const finalStatus = input.status ? (statusMap[input.status] || "進入檔案室") : "進入檔案室";
+
   const result = await db.insert(cases).values({
     caseNumber: input.caseNumber,
-    status: "進入檔案室",
+    status: finalStatus as "進入檔案室" | "擲回經辦人員" | "轉台北審核" | "轉法務追償",
+    returnReason: input.returnReason || undefined,
+    transferLegalInfo: input.transferLegalInfo || undefined,
     createdBy: input.createdBy,
   });
+
+  // 如果設置了初始狀態，則在 statusHistory 中記錄
+  if (input.status) {
+    const caseId = (result as any).insertId;
+    await db.insert(statusHistory).values({
+      caseId,
+      status: finalStatus as "進入檔案室" | "擲回經辦人員" | "轉台北審核" | "轉法務追償",
+      operatorId: input.createdBy,
+      reason: input.returnReason || undefined,
+      transferLegalInfo: input.transferLegalInfo || undefined,
+    });
+  }
 
   return result;
 }

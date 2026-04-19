@@ -42,6 +42,8 @@ export const cases = mysqlTable("cases", {
     "轉台北審核",
     "轉法務追償",
   ]).notNull(),
+  returnReason: text("returnReason"), // 擲回原因
+  transferLegalInfo: text("transferLegalInfo"), // 轉法務追償信息
   createdBy: int("createdBy").notNull().references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

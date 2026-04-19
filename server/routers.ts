@@ -61,6 +61,9 @@ export const appRouter = router({
           regionCode: z.string().regex(/^(16|17|18|29|30|37)$/, "無效的區域代碼"),
           insuranceType: z.string().regex(/^[A-Z]$/, "險種必須為單一大寫字母"),
           serialNumber: z.number().min(1).max(99999),
+          status: z.enum(["entering_archive", "returned", "transfer_taipei", "transfer_legal"]).optional(),
+          returnReason: z.string().optional(),
+          transferLegalInfo: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -78,6 +81,9 @@ export const appRouter = router({
           const result = await db.createCase({
             caseNumber,
             createdBy: ctx.user.id,
+            status: input.status,
+            returnReason: input.returnReason,
+            transferLegalInfo: input.transferLegalInfo,
           });
 
           // 發送 WebSocket 事件通知所有客戶端
