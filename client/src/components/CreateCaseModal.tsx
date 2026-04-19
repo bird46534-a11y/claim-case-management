@@ -185,12 +185,12 @@ export default function CreateCaseModal({ isOpen, onClose, onSuccess }: CreateCa
           {/* 狀態選擇 */}
           <div className="space-y-2">
             <Label htmlFor="status">初始狀態 (可選)</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status || "none"} onValueChange={(val) => setStatus(val === "none" ? "" : val)}>
               <SelectTrigger id="status">
                 <SelectValue placeholder="選擇狀態" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">不設定狀態</SelectItem>
+                <SelectItem value="none">不設定狀態</SelectItem>
                 {STATUS_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
