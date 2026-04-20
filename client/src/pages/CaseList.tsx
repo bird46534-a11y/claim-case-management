@@ -14,6 +14,7 @@ import CreateCaseModal from "@/components/CreateCaseModal";
 import { ImportExcelModal } from "@/components/ImportExcelModal";
 import FilterBar from "@/components/FilterBar";
 import { getLoginUrl } from "@/const";
+import { useLocation } from "wouter";
 
 const STATUS_OPTIONS = [
   { value: "進入檔案室", label: "進入檔案室" },
@@ -48,6 +49,7 @@ function LogoutButton() {
 export default function CaseList() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { subscribe } = useWebSocket();
+  const [, navigate] = useLocation();
   
   // 搜尋和篩選狀態
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -212,6 +214,13 @@ export default function CaseList() {
                   >
                     <Plus className="w-4 h-4" />
                     匯入 Excel
+                  </Button>
+                  <Button
+                    onClick={() => navigate('/users')}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    用戶管理
                   </Button>
                 </>
               )}

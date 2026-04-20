@@ -84,3 +84,23 @@ export type StatusChangeInfo = {
   reason?: string; // 擲回原因
   transferLegalInfo?: string; // 轉法務追償信息
 };
+/**
+ * 審計日誌表：記錄用戶權限變更
+ * admin_id: 執行操作的管理員 user id
+ * target_user_id: 被修改的用戶 user id
+ * old_role: 修改前的角色
+ * new_role: 修改後的角色
+ * changed_at: 變更時間
+ */
+export const auditLog = mysqlTable("auditLog", {
+  id: int("id").autoincrement().primaryKey(),
+  adminId: int("adminId").notNull().references(() => users.id),
+  targetUserId: int("targetUserId").notNull().references(() => users.id),
+  oldRole: mysqlEnum("oldRole", ["user", "admin"]).notNull(),
+  newRole: mysqlEnum("newRole", ["user", "admin"]).notNull(),
+  reason: text("reason"),
+  changedAt: timestamp("changedAt").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLog.$inferSelect;
+export type InsertAuditLog = typeof auditLog.$inferInsert;

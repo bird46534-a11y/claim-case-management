@@ -222,6 +222,73 @@ export const appRouter = router({
         }
       }),
   }),
+
+  users: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "只有管理者可以查看用戶列表" });
+      }
+      return await db.getAllUsers();
+    }),
+
+    search: protectedProcedure
+      .input(z.object({ keyword: z.string() }))
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "只有管理者可以搜尋用戶" });
+        }
+        return await db.searchUsers(input.keyword);
+      }),
+
+    updateRole: protectedProcedure
+      .input(z.object({
+        userId: z.number(),
+        newRole: z.enum(["user", "admin"]),
+        reason: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "只有管理者可以修改用戶角色" });
+        }
+
+        // 防止自己被降級
+        if (input.userId === ctx.user.id && input.newRole === "user") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "無法將自己降級為普通用戶" });
+        }
+
+        const targetUser = await db.getUserById(input.userId);
+        if (!targetUser) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "用戶不存在" });
+        }
+
+        // 記錄審計日誌
+        await db.createAuditLog({
+          adminId: ctx.user.id,
+          targetUserId: input.userId,
+          oldRole: targetUser.role,
+          newRole: input.newRole,
+          reason: input.reason,
+        });
+
+        // 更新用戶角色
+        await db.updateUserRole(input.userId, input.newRole);
+
+        return { success: true };
+      }),
+
+    auditLog: protectedProcedure
+      .input(z.object({ userId: z.number().optional() }))
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "只有管理者可以查看審計日誌" });
+        }
+
+        if (input.userId) {
+          return await db.getAuditLogForUser(input.userId);
+        }
+        return await db.getAllAuditLogs();
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

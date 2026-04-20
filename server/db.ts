@@ -1,6 +1,6 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or, like, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, cases, statusHistory } from "../drizzle/schema";
+import { InsertUser, users, cases, statusHistory, auditLog } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -307,4 +307,112 @@ export async function getCaseByNumber(caseNumber: string) {
   const result = await db.select().from(cases).where(eq(cases.caseNumber, caseNumber)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
+}
+
+
+/**
+ * 取得所有用戶列表
+ */
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(users).orderBy(users.lastSignedIn);
+  return result;
+}
+
+/**
+ * 戠索用戶
+ */
+export async function searchUsers(keyword: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db
+    .select()
+    .from(users)
+    .where(
+      or(
+        like(users.name, `%${keyword}%`),
+        like(users.email, `%${keyword}%`),
+        like(users.openId, `%${keyword}%`)
+      )
+    )
+    .orderBy(users.id);
+
+  return result;
+}
+
+/**
+ * 按 ID 取得用戶
+ */
+export async function getUserById(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/**
+ * 更新用戶角色
+ */
+export async function updateUserRole(userId: number, newRole: "user" | "admin") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(users).set({ role: newRole }).where(eq(users.id, userId));
+}
+
+/**
+ * 記錄審計日誌
+ */
+export async function createAuditLog(input: {
+  adminId: number;
+  targetUserId: number;
+  oldRole: "user" | "admin";
+  newRole: "user" | "admin";
+  reason?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.insert(auditLog).values({
+    adminId: input.adminId,
+    targetUserId: input.targetUserId,
+    oldRole: input.oldRole,
+    newRole: input.newRole,
+    reason: input.reason,
+  });
+}
+
+/**
+ * 取得特定用戶的審計日誌
+ */
+export async function getAuditLogForUser(targetUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .select()
+    .from(auditLog)
+    .where(eq(auditLog.targetUserId, targetUserId))
+    .orderBy(desc(auditLog.changedAt));
+
+  return result;
+}
+
+/**
+ * 取得所有審計日誌
+ */
+export async function getAllAuditLogs() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .select()
+    .from(auditLog)
+    .orderBy(desc(auditLog.changedAt));
+
+  return result;
 }
