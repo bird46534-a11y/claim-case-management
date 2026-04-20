@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import CaseHistory from "@/components/CaseHistory";
 import ExportButton from "@/components/ExportButton";
 import CreateCaseModal from "@/components/CreateCaseModal";
+import { ImportExcelModal } from "@/components/ImportExcelModal";
 import FilterBar from "@/components/FilterBar";
 import { getLoginUrl } from "@/const";
 
@@ -63,6 +64,7 @@ export default function CaseList() {
   const [transferLegalInfo, setTransferLegalInfo] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const itemsPerPage = 50;
 
   // 查詢案件列表
@@ -195,13 +197,23 @@ export default function CaseList() {
             <h1 className="text-3xl font-bold">理賠案件管理系統</h1>
             <div className="flex gap-2">
               {user?.role === "admin" && (
-                <Button
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  建立新案件
-                </Button>
+                <>
+                  <Button
+                    onClick={() => setIsCreateModalOpen(true)}
+                    className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    建立新案件
+                  </Button>
+                  <Button
+                    onClick={() => setIsImportModalOpen(true)}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    匯入 Excel
+                  </Button>
+                </>
               )}
               <ExportButton />
               <LogoutButton />
@@ -444,6 +456,13 @@ export default function CaseList() {
       <CreateCaseModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={() => refetchCases()}
+      />
+
+      {/* 匯入 Excel 彈窗 */}
+      <ImportExcelModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => refetchCases()}
       />
     </div>

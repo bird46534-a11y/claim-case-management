@@ -296,3 +296,15 @@ export async function getCaseById(caseId: number) {
 
   return result.length > 0 ? result[0] : undefined;
 }
+
+/**
+ * 按案號查詢案件
+ */
+export async function getCaseByNumber(caseNumber: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(cases).where(eq(cases.caseNumber, caseNumber)).limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}

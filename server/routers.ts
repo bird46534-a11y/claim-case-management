@@ -6,6 +6,7 @@ import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { exportCasesToExcel } from "./export";
+import { importCasesFromExcel } from "./importExcel";
 
 export const appRouter = router({
   system: systemRouter,
@@ -191,6 +192,35 @@ export const appRouter = router({
         filename: `案件列表_${new Date().toISOString().split("T")[0]}.xlsx`,
       };
     }),
+  }),
+
+  import: router({
+    cases: protectedProcedure
+      .input(z.object({
+        fileBase64: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "只有管理者可以匯入案件" });
+        }
+
+        try {
+          const fileBuffer = Buffer.from(input.fileBase64, 'base64');
+          const result = await importCasesFromExcel(fileBuffer, ctx.user.id);
+
+          const io = (ctx.req as any).app?.io;
+          if (io && result.success > 0) {
+            io.emit("cases:imported", {
+              count: result.success,
+            });
+          }
+
+          return result;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "未知錯誤";
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+        }
+      }),
   }),
 });
 
